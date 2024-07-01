@@ -4,7 +4,8 @@ import com.es1.back.backingQuack.model.BackingTrackRequest
 import org.jfugue.midi.MidiFileManager
 import org.jfugue.pattern.Pattern
 import org.jfugue.theory.ChordProgression
-import org.jfugue.rhythm.Rhythm;
+import org.jfugue.rhythm.Rhythm
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.io.File
 import java.nio.file.Files
@@ -15,44 +16,80 @@ import java.util.UUID
 @Service
 class BackingTrackService {
 
+    private val logger = LoggerFactory.getLogger(BackingTrackService::class.java)
+
+
     fun generateMidi(request: BackingTrackRequest): Pair<File, UUID> {
-        val chordProgression = convertChordProgressionString(request.chordProgressionList)
-        val cp = ChordProgression(chordProgression).setKey(request.root)
-        val rhythm= Rhythm()
-        rhythm.addLayer("O...").addLayer("````")
-        val repeats = getNumberOfRepeats(request.chordProgressionList.toString())
-        val pattern = Pattern(cp, rhythm.pattern.repeat(repeats)).setTempo(request.bpm)
+        logger.info(
+            "Iniciando a geração do arquivo MIDI para a progressão de acordes: {}",
+            request.chordProgressionList
+        )
 
-        val uuid = UUID.randomUUID()
+        return try {
+            val chordProgression = convertChordProgressionString(request.chordProgressionList)
+            logger.debug("Progressão de acordes convertida: {}", chordProgression)
 
-        val outputDir = Paths.get("output")
-        if (!Files.exists(outputDir)) {
-            Files.createDirectories(outputDir)
+            val cp = ChordProgression(chordProgression).setKey(request.root)
+            val rhythm = Rhythm()
+            rhythm.addLayer("O...").addLayer("````")
+            val repeats = getNumberOfRepeats(request.chordProgressionList.toString())
+            val pattern = Pattern(cp, rhythm.pattern.repeat(repeats)).setTempo(request.bpm)
+
+            val uuid = UUID.randomUUID() //Gera um id único para cada arquivo criado
+
+            val outputDir = Paths.get("output")
+            if (!Files.exists(outputDir)) {
+                Files.createDirectories(outputDir)
+                logger.info("Diretório de saída criado: {}", outputDir)
+            }
+
+            val localFilePath = outputDir.resolve("output_$uuid.mid")
+            val midiFile = localFilePath.toFile()
+
+            MidiFileManager.savePatternToMidi(pattern, midiFile)
+            Pair(midiFile, uuid)
+        } catch (e: Exception) {
+            logger.error("Erro ao gerar o arquivo MIDI: {}", e.message, e)
+            throw RuntimeException("Erro ao gerar o arquivo MIDI", e)
         }
-        val localFilePath = outputDir.resolve("output_$uuid.mid")
-        val midiFile = localFilePath.toFile()
 
-        MidiFileManager.savePatternToMidi(pattern, midiFile)
-        return Pair(midiFile, uuid)
     }
 
-
-
     private fun convertChordProgressionString(chordProgressionList: List<String>): String {
-        val finalString = StringBuilder()
-        for (chordProgression in chordProgressionList) {
-            val chords = chordProgression.split(" ")
-            for (chord in chords) {
-                for (i in 1..4) {
-                    finalString.append("$chord ")
+        return try {
+            val finalString = StringBuilder()
+            for (chordProgression in chordProgressionList) {
+                val chords = chordProgression.split(" ")
+                for (chord in chords) {
+                    repeat(4) {
+                        finalString.append("$chord ")
+                    }
                 }
             }
+            val longFinalString = StringBuilder().apply {
+                repeat(15) {
+                    append(finalString)
+                }
+            }
+            logger.debug("String final da progressão de acordes: {}", longFinalString)
+            longFinalString.toString()
+        } catch (e: Exception) {
+            logger.error("Erro ao converter a progressão de acordes: {}", e.message, e)
+            throw RuntimeException("Erro ao converter a progressão de acordes", e)
         }
-        return finalString.toString()
     }
 
     private fun getNumberOfRepeats(chordProgression: String): Int {
-        val chords: List <String> = chordProgression.split(" ");
-        return 2 * chords.size;
+        return try {
+            val chords: List<String> = chordProgression.split(" ")
+            val repeats = 2 * chords.size
+            logger.debug("Número de repetições calculado: {}", repeats)
+            repeats
+
+        } catch (e: Exception) {
+            logger.error("Erro ao calcular o número de repetições: {}", e.message, e)
+            throw RuntimeException("Erro ao calcular o número de repetições", e)
+        }
+
     }
 }
